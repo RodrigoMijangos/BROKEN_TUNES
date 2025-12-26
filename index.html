@@ -1,0 +1,144 @@
+<!-- index.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>BROKEN TUNES</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .song { margin-bottom: 10px; }
+    .playbtn { margin-left: 10px; }
+    .backupbtn { margin-left: 6px; color: darkgreen; }
+  </style>
+</head>
+<body>
+  <h1>BROKEN TUNES</h1>
+
+  <div id="login">
+    <h3>Login</h3>
+    <input id="u" placeholder="username" value="admin">
+    <input id="p" placeholder="password" value="1234" type="password">
+    <button onclick="doLogin()">Login</button>
+    <div id="login-res"></div>
+  </div>
+
+  <h3>Canciones</h3>
+  <div id="songs">Cargando...</div>
+
+  <h3>Backups</h3>
+  <div id="backups">Cargando backups...</div>
+
+  <h3>Reproductor</h3>
+  <audio id="player" controls></audio>
+  <div>
+    Velocidad: <input id="speed" type="range" min="0.5" max="2.0" step="0.1" value="1" oninput="setSpeed(this.value)">
+    <span id="speedVal">1.0</span>x
+  </div>
+
+  <script>
+    let user_type = 'guest';
+
+    function doLogin() {
+      const u = document.getElementById('u').value;
+      const p = document.getElementById('p').value;
+      if (u === 'admin' && p === '1234') {
+        user_type = 'admin';
+        document.getElementById('login-res').innerText = 'Logged as admin';
+      } else {
+        document.getElementById('login-res').innerText = 'Login failed';
+      }
+      // refrescar backups después de login por si acaso
+      loadBackups();
+    }
+
+    function loadSongs() {
+      fetch('/api/songs')
+        .then(r => r.json())
+        .then(drawSongs)
+        .catch(e => { document.getElementById('songs').innerText = 'Error cargando'; });
+    }
+
+    function loadBackups() {
+      fetch('/api/songs_backup')
+        .then(r => r.json())
+        .then(drawBackups)
+        .catch(e => { document.getElementById('backups').innerText = 'Error cargando backups'; });
+    }
+
+    function drawSongs(list) {
+      const container = document.getElementById('songs');
+      container.innerHTML = '';
+      list.forEach(s => {
+        const d = document.createElement('div');
+        d.className = 'song';
+        d.innerHTML = `<strong>${s.title}</strong> — ${s.artist}
+          <button class="playbtn" onclick="play(${s.id})">Play</button>
+          <button class="backupbtn" onclick="backup(${s.id})">Backup</button>`;
+        container.appendChild(d);
+      });
+    }
+
+    function drawBackups(list) {
+      const container = document.getElementById('backups');
+      container.innerHTML = '';
+      if (!list.length) {
+        container.innerText = 'No backups';
+        return;
+      }
+      list.forEach(b => {
+        const d = document.createElement('div');
+        d.className = 'song';
+        d.innerHTML = `<strong>[B${b.id}] ${b.title}</strong> — ${b.artist}
+          <small>by ${b.backed_up_by} at ${b.backed_up_at}</small>
+          <button class="playbtn" onclick="playBackup(${b.id})">Play Backup</button>`;
+        container.appendChild(d);
+      });
+    }
+
+    function play(id) {
+      if (user_type == 'admin') {
+        console.log('Admin is playing');
+      }
+      const audio = document.getElementById('player');
+      audio.src = '/play/' + id;
+      audio.playbackRate = parseFloat(document.getElementById('speed').value);
+      audio.play().catch(e => console.log('Play err', e));
+    }
+
+    function playBackup(id) {
+      const audio = document.getElementById('player');
+      audio.src = '/play_backup/' + id;
+      audio.playbackRate = parseFloat(document.getElementById('speed').value);
+      audio.play().catch(e => console.log('Play backup err', e));
+    }
+
+    function backup(id) {
+      const form = new FormData();
+      form.append('backed_by', user_type);
+      form.append('note', 'manual backup from UI');
+      fetch('/api/backup/' + id, { method: 'POST', body: form })
+        .then(r => r.json())
+        .then(j => {
+          if (j.ok) {
+            alert('Backup created: ' + j.backup_id);
+            loadBackups();
+          } else {
+            alert('Backup failed: ' + (j.error || 'unknown'));
+          }
+        })
+        .catch(e => alert('Backup error'));
+    }
+
+    function setSpeed(v) {
+      document.getElementById('speedVal').innerText = v;
+      const audio = document.getElementById('player');
+      // El control de velocidad ajusta playbackRate; en esta versión no se aplica corrección de pitch
+      audio.playbackRate = parseFloat(v);
+    }
+
+    // carga inicial
+    loadSongs();
+    loadBackups();
+  </script>
+</body>
+</html>
